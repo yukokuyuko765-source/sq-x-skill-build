@@ -803,6 +803,35 @@ input[type="number"] { width: 60px; }
   border-color: var(--border);
 }
 
+/* ===== Level Gauge ===== */
+.level-gauge {
+  display: flex;
+  gap: 1px;
+  margin-top: 4px;
+}
+
+.gauge-cell {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 1px;
+  cursor: pointer;
+  transition: background 0.1s;
+  min-width: 0;
+}
+
+.gauge-cell:hover {
+  background: var(--text-dim);
+}
+
+.gauge-cell.filled {
+  background: var(--accent);
+}
+
+.gauge-cell.filled:hover {
+  background: var(--red);
+}
+
 /* ===== Mobile ===== */
 @media (max-width: 640px) {
   .header {

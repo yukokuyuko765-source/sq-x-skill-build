@@ -10,6 +10,7 @@ export default function SkillCard({
   canRemove,
   onAdd,
   onRemove,
+  onSetLevel,
 }) {
   const maxLv = effectiveMaxLevel ?? skill.maxLevel;
 
@@ -20,6 +21,15 @@ export default function SkillCard({
   ]
     .filter(Boolean)
     .join(" ");
+
+  const handleGaugeClick = (level) => {
+    if (level === currentLv) {
+      // 同じレベルをクリックしたら0にリセット
+      onSetLevel(skill.id, 0);
+    } else {
+      onSetLevel(skill.id, level);
+    }
+  };
 
   return (
     <div className={cardClass} data-skill-card={skill.id}>
@@ -52,6 +62,16 @@ export default function SkillCard({
             </button>
           </div>
         </div>
+      </div>
+      <div className="level-gauge">
+        {Array.from({ length: maxLv }, (_, i) => i + 1).map((lv) => (
+          <div
+            key={lv}
+            className={`gauge-cell${lv <= currentLv ? " filled" : ""}`}
+            onClick={() => handleGaugeClick(lv)}
+            title={`Lv ${lv}`}
+          />
+        ))}
       </div>
     </div>
   );

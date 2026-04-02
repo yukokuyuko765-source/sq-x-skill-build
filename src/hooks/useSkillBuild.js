@@ -103,6 +103,96 @@ export function useSkillBuild(classData, subClassData) {
     [getPrereqAllocations]
   );
 
+  // 全スキルリストを取得するヘルパー
+  const getAllSkills = useCallback(() => {
+    const skills = [];
+    if (classData?.skills) skills.push(...classData.skills);
+    if (subClassData?.skills) skills.push(...subClassData.skills);
+    return skills;
+  }, [classData, subClassData]);
+
+  // サブクラスのスキルは上限が半分
+  const getEffectiveMaxLevel = useCallback(
+    (skill) => {
+      if (subClassData?.skills.some((s) => s.id === skill.id)) {
+        return Math.floor(skill.maxLevel * 0.5);
+      }
+      return skill.maxLevel;
+    },
+    [subClassData]
+  );
+
+  // 指定レベル以降で上限を超過した割り振りをトリミングする
+  const clampOverflow = useCallback(
+    (allocs, fromLevel) => {
+      const next = { ...allocs };
+      const allSkills = getAllSkills();
+
+      for (let lv = fromLevel + 1; lv <= SP_CONFIG.maxLevel; lv++) {
+        if (!next[lv]) continue;
+        const levelAlloc = { ...next[lv] };
+        let modified = false;
+
+        // 上限超過のトリミング
+        for (const skill of allSkills) {
+          if (!levelAlloc[skill.id]) continue;
+          let cumulative = 0;
+          for (let l = 1; l <= lv; l++) {
+            const a = l === lv ? levelAlloc : next[l];
+            if (a && a[skill.id]) cumulative += a[skill.id];
+          }
+          const maxLv = getEffectiveMaxLevel(skill);
+          if (cumulative > maxLv) {
+            const excess = cumulative - maxLv;
+            const newAlloc = Math.max(0, levelAlloc[skill.id] - excess);
+            if (newAlloc <= 0) {
+              delete levelAlloc[skill.id];
+            } else {
+              levelAlloc[skill.id] = newAlloc;
+            }
+            modified = true;
+          }
+        }
+
+        // トリミングにより前提が崩れた後続スキルを連鎖リセット
+        if (modified) {
+          const getCumulativeLevel = (sid) => {
+            let total = 0;
+            for (let l = 1; l <= lv; l++) {
+              const a = l === lv ? levelAlloc : next[l];
+              if (a && a[sid]) total += a[sid];
+            }
+            return total;
+          };
+
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (const sk of allSkills) {
+              if (!levelAlloc[sk.id]) continue;
+              for (const prereq of sk.prerequisites) {
+                if (getCumulativeLevel(prereq.skillId) < prereq.level) {
+                  delete levelAlloc[sk.id];
+                  changed = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        if (Object.keys(levelAlloc).length === 0) {
+          delete next[lv];
+        } else {
+          next[lv] = levelAlloc;
+        }
+      }
+
+      return next;
+    },
+    [getAllSkills, getEffectiveMaxLevel]
+  );
+
   const addPoint = useCallback(
     (skillId) => {
       if (!classData) return;
@@ -121,19 +211,96 @@ export function useSkillBuild(classData, subClassData) {
         levelAlloc[skillId] = (levelAlloc[skillId] || 0) + 1;
 
         next[currentLevel] = levelAlloc;
-        return next;
+        return clampOverflow(next, currentLevel);
       });
     },
-    [classData, currentLevel, getPrereqAllocations, findSkill]
+    [classData, currentLevel, getPrereqAllocations, findSkill, clampOverflow]
   );
 
-  // 全スキルリストを取得するヘルパー
-  const getAllSkills = useCallback(() => {
-    const skills = [];
-    if (classData?.skills) skills.push(...classData.skills);
-    if (subClassData?.skills) skills.push(...subClassData.skills);
-    return skills;
-  }, [classData, subClassData]);
+  const setSkillLevel = useCallback(
+    (skillId, targetLevel) => {
+      if (!classData) return;
+      const skill = findSkill(skillId);
+      if (!skill) return;
+
+      const currentSkillLv = getSkillLevel(skillId, currentLevel);
+      if (targetLevel === currentSkillLv) return;
+
+      if (targetLevel > currentSkillLv) {
+        // 増加: 前提スキルも含めてポイントを追加
+        const diff = targetLevel - currentSkillLv;
+        setAllocations((prev) => {
+          const next = { ...prev };
+          const levelAlloc = { ...(next[currentLevel] || {}) };
+
+          // 前提スキルを解決
+          const prereqAlloc = getPrereqAllocations(skill, currentLevel);
+          for (const [pId, pts] of Object.entries(prereqAlloc)) {
+            levelAlloc[pId] = (levelAlloc[pId] || 0) + pts;
+          }
+          levelAlloc[skillId] = (levelAlloc[skillId] || 0) + diff;
+
+          next[currentLevel] = levelAlloc;
+          return clampOverflow(next, currentLevel);
+        });
+      } else {
+        // 減少: ポイントを減らし、前提が崩れた後続スキルをリセット
+        setAllocations((prev) => {
+          const next = { ...prev };
+          const levelAlloc = { ...(next[currentLevel] || {}) };
+
+          const currentAllocAtLevel = levelAlloc[skillId] || 0;
+          const cumulativeBeforeThisLevel = currentSkillLv - currentAllocAtLevel;
+          const newAllocAtLevel = Math.max(0, targetLevel - cumulativeBeforeThisLevel);
+
+          if (newAllocAtLevel <= 0) {
+            delete levelAlloc[skillId];
+          } else {
+            levelAlloc[skillId] = newAllocAtLevel;
+          }
+
+          // 累積レベル計算ヘルパー
+          const getCumulativeLevel = (sid) => {
+            let total = 0;
+            for (let lv = 1; lv <= currentLevel; lv++) {
+              if (lv === currentLevel) {
+                total += levelAlloc[sid] || 0;
+              } else {
+                const alloc = next[lv];
+                if (alloc && alloc[sid]) total += alloc[sid];
+              }
+            }
+            return total;
+          };
+
+          // 前提が満たされなくなった後続スキルを連鎖的にリセット
+          const allSkills = getAllSkills();
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (const sk of allSkills) {
+              if (!levelAlloc[sk.id]) continue;
+              for (const prereq of sk.prerequisites) {
+                if (getCumulativeLevel(prereq.skillId) < prereq.level) {
+                  delete levelAlloc[sk.id];
+                  changed = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (Object.keys(levelAlloc).length === 0) {
+            delete next[currentLevel];
+          } else {
+            next[currentLevel] = levelAlloc;
+          }
+          return next;
+        });
+      }
+    },
+    [classData, currentLevel, getSkillLevel, getPrereqAllocations, findSkill, getAllSkills, clampOverflow]
+  );
 
   const removePoint = useCallback(
     (skillId) => {
@@ -319,6 +486,7 @@ export function useSkillBuild(classData, subClassData) {
     getUsedSP,
     addPoint,
     removePoint,
+    setSkillLevel,
     resetBuild,
     saveToSlot,
     loadFromSlot,

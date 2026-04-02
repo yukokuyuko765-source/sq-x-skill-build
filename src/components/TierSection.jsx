@@ -88,6 +88,7 @@ export default function TierSection({
                 canRemove={canRemove}
                 onAdd={() => build.addPoint(skill.id)}
                 onRemove={() => build.removePoint(skill.id)}
+                onSetLevel={build.setSkillLevel}
               />
             </div>
           );
