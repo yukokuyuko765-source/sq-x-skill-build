@@ -354,6 +354,26 @@ export function useSkillBuild(classData, subClassData) {
     [currentLevel, getAllSkills]
   );
 
+  // 指定したスキルIDリストの割り振りを全レベルから削除
+  const clearSkillAllocations = useCallback(
+    (skillIds) => {
+      if (!skillIds || skillIds.length === 0) return;
+      const idSet = new Set(skillIds);
+      setAllocations((prev) => {
+        const next = {};
+        for (const [lv, alloc] of Object.entries(prev)) {
+          const filtered = {};
+          for (const [sid, pts] of Object.entries(alloc)) {
+            if (!idSet.has(sid)) filtered[sid] = pts;
+          }
+          if (Object.keys(filtered).length > 0) next[lv] = filtered;
+        }
+        return next;
+      });
+    },
+    []
+  );
+
   const resetBuild = useCallback(() => {
     setAllocations({});
     setCurrentLevel(1);
@@ -487,6 +507,7 @@ export function useSkillBuild(classData, subClassData) {
     addPoint,
     removePoint,
     setSkillLevel,
+    clearSkillAllocations,
     resetBuild,
     saveToSlot,
     loadFromSlot,

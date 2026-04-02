@@ -27,13 +27,21 @@ export default function App() {
   const subTreeRef = useRef(null);
 
   const handleClassChange = useCallback((id) => {
+    // 変更元クラスのスキル割り振りをリセット
+    if (classData) {
+      build.clearSkillAllocations(classData.skills.map((s) => s.id));
+    }
     setClassId(id);
     setSubClassId((prev) => (prev === id ? "" : prev));
-  }, []);
+  }, [classData, build]);
 
   const handleSubClassChange = useCallback((id) => {
+    // 変更元サブクラスのスキル割り振りをリセット
+    if (subClassData) {
+      build.clearSkillAllocations(subClassData.skills.map((s) => s.id));
+    }
     setSubClassId(id);
-  }, []);
+  }, [subClassData, build]);
 
   const openSaveModal = () => setModalState({ open: true, mode: "save" });
   const openLoadModal = () => setModalState({ open: true, mode: "load" });
