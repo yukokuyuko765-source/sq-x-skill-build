@@ -141,6 +141,11 @@ export default function App() {
         <div className="sp-info">
           <span className="sp-total">総SP: {build.spInfo.total}</span>
           <span className="sp-used">使用: {build.spInfo.used}</span>
+          {build.spInfo.used > 0 && (
+            <span className="sp-required-level">
+              (Lv{Math.max(1, Math.ceil((build.spInfo.used - SP_CONFIG.initialSP - build.bonusSP - (subClassData ? 5 : 0)) / SP_CONFIG.spPerLevel) + 1)}相当)
+            </span>
+          )}
           <span className={`sp-remain${build.spInfo.remain < 0 ? " over" : ""}`}>
             残り: {build.spInfo.remain}
           </span>
